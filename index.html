@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traduction Français-Pular</title>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #66ea7e 0%, #4ba255 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #4a6491);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .main-content {
+            padding: 30px;
+        }
+        
+        .verbe-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 2px solid #e9ecef;
+        }
+        
+        .verbe-francais {
+            font-size: 2.5em;
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        
+        .input-container {
+            margin: 30px 0;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 1.2em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            outline: none;
+            transition: border 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            border-color: #667eea;
+        }
+        
+        .buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 15px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .btn-valider {
+            background: linear-gradient(135deg, #4CAF50, #2E7D32);
+            color: white;
+        }
+        
+        .btn-passer {
+            background: linear-gradient(135deg, #ff9800, #ef6c00);
+            color: white;
+            position: relative;
+        }
+        
+        .btn-passer.long-press {
+            background: linear-gradient(135deg, #f44336, #c62828);
+        }
+        
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 5px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .classement {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .classement-title {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        
+        .classement-list {
+            list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .classement-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .classement-item.current-user {
+            background: #e3f2fd;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .position {
+            font-weight: bold;
+            width: 40px;
+            text-align: center;
+        }
+        
+        .medal-1 { color: gold; }
+        .medal-2 { color: silver; }
+        .medal-3 { color: #cd7f32; }
+        
+        .user-name {
+            flex: 1;
+            margin-left: 15px;
+        }
+        
+        .user-points {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        .playlist-info {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.2em;
+            color: #666;
+        }
+        
+        @media (max-width: 600px) {
+            .buttons {
+                grid-template-columns: 1fr;
+            }
+            
+            .verbe-francais {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Français-Pular</h1>
+            <p>Traduisez les verbes, montez dans le classement !</p>
+        </div>
+        <!-- Panneau d'initialisation (visible seulement si base vide) -->
+        <div id="init-panel" style="display: none; text-align: center; padding: 20px; background: linear-gradient(135deg, #ff9800, #ff5722); color: white; border-radius: 10px; margin: 20px;">
+            <h2 style="margin-bottom: 15px;">⚠️ Première utilisation</h2>
+            <p style="margin-bottom: 20px; font-size: 16px;">
+                La base de données est vide. Cliquez sur le bouton ci-dessous pour initialiser avec les premiers verbes.
+            </p>
+            <button onclick="initializeDatabase()" 
+                    style="padding: 15px 30px; font-size: 18px; background: white; color: #ff5722; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                🚀 INITIALISER LA BASE DE DONNÉES
+            </button>
+            <p style="margin-top: 15px; font-size: 14px; opacity: 0.9;">
+                Cette opération créera 20 verbes et 2 playlists de test.
+            </p>
+        </div>
+        
+        <div class="main-content">
+            <!-- Statistiques personnelles -->
+            <div class="stats-container" id="stats-container">
+                <!-- Rempli dynamiquement -->
+            </div>
+            
+            <!-- Zone de traduction -->
+            <div class="verbe-container">
+                <div class="verbe-francais" id="verbe-francais">Chargement...</div>
+                
+                <div class="input-container">
+                    <input type="text" id="traduction-input" 
+                           placeholder="Écrivez la traduction en pular...">
+                </div>
+                
+                <div class="buttons">
+                    <button class="btn btn-valider" id="btn-valider">VALIDER ✓</button>
+                    <button class="btn btn-passer" id="btn-passer">PASSER →</button>
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="playlist-info" id="playlist-info"></div>
+            </div>
+            
+            <!-- Classement en temps réel -->
+            <div class="classement">
+                <h2 class="classement-title">🏆 CLASSEMENT EN TEMPS RÉEL</h2>
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="global">Global</button>
+                    <button class="tab-btn" data-tab="journalier">Journalier</button>
+                </div>
+                <ul class="classement-list" id="classement-list">
+                    <!-- Rempli dynamiquement -->
+                </ul>
+            </div>
+        </div>
+    </div>
+    <footer style="
+        text-align: center;
+        padding: 15px;
+        margin-top: 30px;
+        background: linear-gradient(135deg, #2c3e50, #4a6491);
+        color: white;
+        border-top: 3px solid #667eea;
+        font-size: 14px;
+        ">
+        <div style="max-width: 800px; margin: 0 auto;">
+            <p style="margin: 0;">
+                © <span id="current-year"></span> Traducteur Collaboratif Français-Pular
+                <br>
+                <span style="opacity: 0.9; font-size: 13px;">
+                    Développé par Thierno Amadou BAH
+                </span>
+                <br>
+                <span style="opacity: 0.7; font-size: 12px;">
+                    Tous droits réservés - Données protégées
+                </span>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Mettre à jour l'année automatiquement
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+    </script>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+[debug] [2025-12-30T18:20:54.361Z] ----------------------------------------------------------------------
+[debug] [2025-12-30T18:20:54.365Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\TUF\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js serve --only hosting
+[debug] [2025-12-30T18:20:54.366Z] CLI Version:   15.1.0
+[debug] [2025-12-30T18:20:54.366Z] Platform:      win32
+[debug] [2025-12-30T18:20:54.366Z] Node Version:  v24.11.1
+[debug] [2025-12-30T18:20:54.366Z] Time:          Tue Dec 30 2025 18:20:54 GMT+0000 (temps universel coordonné)
+[debug] [2025-12-30T18:20:54.366Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-12-30T18:20:56.083Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-12-30T18:20:56.084Z] > authorizing via signed-in user (thiernoamadoubah.004@gmail.com)
+[debug] [2025-12-30T18:20:56.084Z] [iam] checking project vlao-004 for permissions ["firebase.projects.get"]
+[debug] [2025-12-30T18:20:56.085Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:56.086Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:56.087Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004:testIamPermissions [none]
+[debug] [2025-12-30T18:20:56.087Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004:testIamPermissions x-goog-quota-user=projects/vlao-004
+[debug] [2025-12-30T18:20:56.087Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2025-12-30T18:20:56.989Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004:testIamPermissions 200
+[debug] [2025-12-30T18:20:56.989Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2025-12-30T18:20:56.991Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:56.991Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:56.991Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004 [none]
+[debug] [2025-12-30T18:20:57.205Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004 200
+[debug] [2025-12-30T18:20:57.206Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/vlao-004 {"projectNumber":"301087983828","projectId":"vlao-004","lifecycleState":"ACTIVE","name":"VLAO","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2025-12-30T16:04:42.260322Z"}
+[debug] [2025-12-30T18:20:57.208Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:57.208Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:57.208Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/vlao-004/sites 
+[debug] [2025-12-30T18:20:58.264Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/vlao-004/sites 200
+[debug] [2025-12-30T18:20:58.264Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/vlao-004/sites {"sites":[{"name":"projects/vlao-004/sites/vlao-004","defaultUrl":"https://vlao-004.web.app","type":"DEFAULT_SITE"}]}
+[debug] [2025-12-30T18:20:58.264Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:58.264Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:58.264Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/vlao-004/webApps/-/config [none]
+[debug] [2025-12-30T18:20:59.129Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/vlao-004/webApps/-/config 200
+[debug] [2025-12-30T18:20:59.129Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/vlao-004/webApps/-/config {"projectId":"vlao-004","appId":"1:301087983828:web:e8c638a4efa567ec209341","databaseURL":"https://vlao-004-default-rtdb.europe-west1.firebasedatabase.app","storageBucket":"vlao-004.firebasestorage.app","apiKey":"AIzaSyBrzubTczca86Y3rR8xeetknovHP3BYwOY","authDomain":"vlao-004.firebaseapp.com","messagingSenderId":"301087983828","projectNumber":"301087983828","version":"2"}
+[debug] [2025-12-30T18:20:59.137Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:59.137Z] Checked if tokens are valid: true, expires at: 1767119858996
+[debug] [2025-12-30T18:20:59.137Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/vlao-004 [none]
+[debug] [2025-12-30T18:20:59.410Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/vlao-004 200
+[debug] [2025-12-30T18:20:59.410Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/vlao-004 {"projectId":"vlao-004","projectNumber":"301087983828","displayName":"VLAO","name":"projects/vlao-004","resources":{"hostingSite":"vlao-004","realtimeDatabaseInstance":"vlao-004-default-rtdb"},"state":"ACTIVE","etag":"1_01ad3a34-af7c-40dc-b902-1f337b90acfc"}
+[info] +  hosting[vlao-004]: Local server: http://localhost:5000 {"metadata":{"emulator":{"name":"hosting"},"message":"Local server: \u001b[4m\u001b[1mhttp://localhost:5000\u001b[22m\u001b[24m"}}
+[info] i  hosting: ::1 - - [30/Dec/2025:18:21:07 +0000] "GET / HTTP/1.1" 200 - "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0" {"metadata":{"emulator":{"name":"hosting"},"message":"::1 - - [30/Dec/2025:18:21:07 +0000] \"GET / HTTP/1.1\" 200 - \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\""}}
+[info] i  hosting: ::1 - - [30/Dec/2025:18:21:07 +0000] "GET /app.js HTTP/1.1" 200 - "http://localhost:5000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0" {"metadata":{"emulator":{"name":"hosting"},"message":"::1 - - [30/Dec/2025:18:21:07 +0000] \"GET /app.js HTTP/1.1\" 200 - \"http://localhost:5000/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\""}}
+[info] i  hosting: ::1 - - [30/Dec/2025:18:21:07 +0000] "GET /favicon.ico HTTP/1.1" 304 - "http://localhost:5000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0" {"metadata":{"emulator":{"name":"hosting"},"message":"::1 - - [30/Dec/2025:18:21:07 +0000] \"GET /favicon.ico HTTP/1.1\" 304 - \"http://localhost:5000/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\""}}
+[info] i  hosting: ::1 - - [30/Dec/2025:18:22:36 +0000] "GET / HTTP/1.1" 200 - "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0" {"metadata":{"emulator":{"name":"hosting"},"message":"::1 - - [30/Dec/2025:18:22:36 +0000] \"GET / HTTP/1.1\" 200 - \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\""}}
+[info] i  hosting: ::1 - - [30/Dec/2025:18:22:36 +0000] "GET /app.js HTTP/1.1" 200 - "http://localhost:5000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0" {"metadata":{"emulator":{"name":"hosting"},"message":"::1 - - [30/Dec/2025:18:22:36 +0000] \"GET /app.js HTTP/1.1\" 200 - \"http://localhost:5000/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\""}}
