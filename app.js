@@ -28,7 +28,8 @@ let pressTimer;
 let isLongPress = false;
 let passerBtn = null;
 let isLoadingVerbe = false;  // Pour éviter les boucles
-
+let lastClassementUpdate = 0;
+let realtimeUpdatesStarted = false;
 
 // Gestion des erreurs globales
 window.addEventListener('error', function(e) {
@@ -2100,12 +2101,31 @@ async function updateUserStatsAfterTranslation() {
 function startRealtimeUpdates() {
     console.log("🏆 Initialisation classement temps réel");
     
+    // AJOUTEZ UNE VÉRIFICATION POUR ÉVITER LES BOUCLES
+    if (window.realtimeUpdatesStarted) {
+        console.log("⚠️ Classement temps réel déjà démarré");
+        return;
+    }
+    
     // Classement global
     const classementRef = database.ref('utilisateurs').orderByChild('points').limitToLast(20);
     
-    classementRef.on('value', (snapshot) => {
+    // Utilisez .once() pour un premier chargement
+    classementRef.once('value').then((snapshot) => {
         updateClassementDisplay(snapshot.val(), 'global');
     });
+    
+    // Puis utilisez .on() mais avec un intervalle ou un contrôle
+    classementRef.on('value', (snapshot) => {
+        // AJOUTEZ UNE VÉRIFICATION DE TEMPS
+        const now = Date.now();
+        if (!window.lastClassementUpdate || (now - window.lastClassementUpdate) > 5000) { // 5 secondes
+            updateClassementDisplay(snapshot.val(), 'global');
+            window.lastClassementUpdate = now;
+        }
+    });
+    
+    window.realtimeUpdatesStarted = true;
 }
 
 function updateClassementDisplay(usersData, type) {
@@ -2113,8 +2133,11 @@ function updateClassementDisplay(usersData, type) {
     
     if (!list) return;
     
+    // ÉVITEZ LES APPELS INUTILES
     if (!usersData) {
-        list.innerHTML = '<li class="classement-item">Chargement...</li>';
+        if (list.innerHTML === '') {
+            list.innerHTML = '<li class="classement-item">Chargement...</li>';
+        }
         return;
     }
     
@@ -2131,31 +2154,32 @@ function updateClassementDisplay(usersData, type) {
     
     usersArray.sort((a, b) => (b.points || 0) - (a.points || 0));
     
-    // Afficher
-    list.innerHTML = '';
+    // Créer le HTML une seule fois
+    let newHTML = '';
     
     usersArray.slice(0, 10).forEach((user, index) => {
-        const li = document.createElement('li');
-        li.className = `classement-item ${user.id === currentUser.uid ? 'current-user' : ''}`;
-        
         let medal = '';
         if (index === 0) medal = '🥇';
         else if (index === 1) medal = '🥈';
         else if (index === 2) medal = '🥉';
         
-        li.innerHTML = `
-            <div class="position ${index < 3 ? 'medal-' + (index + 1) : ''}">
-                ${index + 1} ${medal}
-            </div>
-            <div class="user-name">${user.nom || 'Anonyme'}</div>
-            <div class="user-points">${user.points || 0} pts</div>
-        `;
+        const isCurrentUser = user.id === currentUser?.uid;
+        const userClass = isCurrentUser ? 'current-user' : '';
         
-        list.appendChild(li);
+        newHTML += `
+            <li class="classement-item ${userClass}">
+                <div class="position ${index < 3 ? 'medal-' + (index + 1) : ''}">
+                    ${index + 1} ${medal}
+                </div>
+                <div class="user-name">${user.nom || 'Anonyme'}</div>
+                <div class="user-points">${user.points || 0} pts</div>
+            </li>
+        `;
     });
     
-    if (usersArray.length === 0) {
-        list.innerHTML = '<li class="classement-item">Aucun joueur pour l\'instant</li>';
+    // Mettre à jour seulement si le contenu a changé
+    if (list.innerHTML !== newHTML) {
+        list.innerHTML = newHTML || '<li class="classement-item">Aucun joueur pour l\'instant</li>';
     }
 }
 
