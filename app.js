@@ -23,10 +23,30 @@ const auth = firebase.auth();
 let currentUser = null;
 let currentVerbe = null;
 let currentPlaylist = [];
-let userStats = {};
+let userStats = null;
 let pressTimer;
 let isLongPress = false;
 let passerBtn = null;
+
+// Gestion des erreurs globales
+window.addEventListener('error', function(e) {
+    console.error('💥 Erreur non capturée:', e.error);
+});
+
+window.addEventListener('unhandledrejection', function(e) {
+    console.error('💥 Promesse rejetée:', e.reason);
+});
+
+// Gestion du offline/online
+window.addEventListener('online', function() {
+    console.log('🌐 Connexion rétablie');
+    showMessage('Connexion rétablie', 'success');
+});
+
+window.addEventListener('offline', function() {
+    console.log('📶 Hors ligne');
+    showMessage('Vous êtes hors ligne', 'warning');
+});
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', async function() {
@@ -34,8 +54,42 @@ document.addEventListener('DOMContentLoaded', async function() {
     await initAuth();
 });
 
+// ==================== FONCTIONS UTILITAIRES ====================
 
-
+function showMessage(text, type = 'info') {
+    // Supprimer les anciens messages
+    const oldMsg = document.querySelector('.flash-message');
+    if (oldMsg) oldMsg.remove();
+    
+    const msg = document.createElement('div');
+    msg.className = `flash-message ${type}`;
+    msg.textContent = text;
+    msg.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        z-index: 10001;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: fadeInDown 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(msg);
+    
+    // Auto-destruction après 3 secondes
+    setTimeout(() => {
+        if (msg.parentNode) {
+            msg.style.animation = 'fadeOutUp 0.3s ease-out';
+            setTimeout(() => {
+                if (msg.parentNode) msg.remove();
+            }, 300);
+        }
+    }, 3000);
+}
 
 // ==================== CONVERSION AUTOMATIQUE PULAR ====================
 
@@ -89,29 +143,487 @@ function configurerConversionTempsReel() {
     });
 }
 
+// ==================== CONFIGURATION AUTH GOOGLE ====================
 
-
-
-
-
-
-// ==================== AUTHENTIFICATION ====================
+// Initialisation auth
 async function initAuth() {
+    console.log("🔐 Initialisation Google Auth...");
+    
     try {
-        console.log("🔐 Connexion anonyme...");
-        const userCredential = await auth.signInAnonymously();
-        currentUser = userCredential.user;
+        // Vérifier que Firebase est bien initialisé
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         
-        console.log('✅ Utilisateur connecté:', currentUser.uid);
+        // Attendre que Firebase soit prêt
+        await new Promise(resolve => {
+            const interval = setInterval(() => {
+                if (firebase.auth) {
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 100);
+        });
         
-        // VÉRIFIER SI LA BASE EST VIDE
-        await checkDatabaseAndInitialize();
+        // Écouter les changements d'authentification
+        firebase.auth().onAuthStateChanged(async (user) => {
+            if (user) {
+                // ✅ Utilisateur connecté avec Google
+                currentUser = user;
+                console.log('✅ Connecté avec Google:', user.displayName);
+                console.log('📧 Email:', user.email);
+                console.log('🆔 UID:', user.uid);
+                
+                // Afficher les infos utilisateur
+                showUserProfile();
+                
+                // Vérifier la base de données d'abord
+                await checkDatabaseAndInitialize();
+                
+                // Charger les données
+                await loadOrCreateUserProfile();
+                initEventListeners();
+                startRealtimeUpdates();
+                await loadNextVerbe();
+                
+                // Cacher le modal de connexion
+                hideLoginModal();
+                
+            } else {
+                // 🔓 Pas connecté, montrer le modal de connexion
+                console.log('Non connecté, affichage écran de connexion');
+                showLoginModal();
+            }
+        });
+        
+        // Vérifier si déjà connecté au chargement
+        const user = firebase.auth().currentUser;
+        if (!user) {
+            showLoginModal();
+        }
         
     } catch (error) {
-        console.error('❌ Erreur auth:', error);
-        document.getElementById('verbe-francais').textContent = "Erreur de connexion";
+        console.error('❌ Erreur critique initialisation:', error);
+        showLoginModal();
     }
 }
+
+// Connexion Google
+async function loginWithGoogle() {
+    try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        
+        // Options supplémentaires
+        provider.addScope('profile');
+        provider.addScope('email');
+        
+        // Connexion avec popup
+        const result = await firebase.auth().signInWithPopup(provider);
+        
+        // Succès - géré par onAuthStateChanged
+        console.log('🎉 Connexion Google réussie');
+        
+    } catch (error) {
+        console.error('❌ Erreur Google login:', error.code, error.message);
+        
+        // Gestion d'erreurs
+        if (error.code === 'auth/popup-closed-by-user') {
+            console.log('Utilisateur a fermé la fenêtre');
+        } else if (error.code === 'auth/cancelled-popup-request') {
+            console.log('Popup annulée');
+        } else if (error.code === 'auth/unauthorized-domain') {
+            alert('Erreur: Domaine non autorisé. Ajoutez votre domaine dans Firebase Console.');
+        } else {
+            alert('Erreur de connexion Google: ' + error.message);
+        }
+    }
+}
+
+// Déconnexion
+async function logout() {
+    try {
+        await firebase.auth().signOut();
+        currentUser = null;
+        userStats = {};
+        
+        console.log('✅ Déconnecté');
+        
+        // Recharger la page pour revenir à l'écran de connexion
+        location.reload();
+        
+    } catch (error) {
+        console.error('❌ Erreur déconnexion:', error);
+    }
+}
+
+// Afficher le profil utilisateur
+function showUserProfile() {
+    // Crée l'élément s'il n'existe pas
+    let profileContainer = document.getElementById('user-profile-container');
+    
+    if (!profileContainer) {
+        profileContainer = document.createElement('div');
+        profileContainer.id = 'user-profile-container';
+        profileContainer.innerHTML = `
+            <div style="position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.9); padding: 10px 15px; border-radius: 25px; box-shadow: 0 3px 15px rgba(0,0,0,0.2);">
+                <img id="user-avatar" src="" alt="Avatar" style="width: 40px; height: 40px; border-radius: 50%; border: 2px solid #4CAF50;">
+                <div style="text-align: right;">
+                    <div id="user-name" style="font-weight: bold; color: #2c3e50; font-size: 14px;"></div>
+                    <div id="user-points" style="color: #666; font-size: 12px;">0 points</div>
+                </div>
+                <button onclick="logout()" style="margin-left: 10px; background: #f44336; color: white; border: none; padding: 5px 10px; border-radius: 15px; font-size: 12px; cursor: pointer; font-weight: bold;">
+                    Déco
+                </button>
+            </div>
+        `;
+        document.querySelector('.container').prepend(profileContainer);
+    }
+    
+    // Mettre à jour les infos
+    const avatar = document.getElementById('user-avatar');
+    const name = document.getElementById('user-name');
+    const points = document.getElementById('user-points');
+    
+    if (currentUser) {
+        // Photo de profil
+        if (currentUser.photoURL) {
+            avatar.src = currentUser.photoURL;
+        } else {
+            // Avatar par défaut avec initiales
+            const initials = currentUser.displayName 
+                ? currentUser.displayName.charAt(0).toUpperCase()
+                : 'J';
+            avatar.src = `https://ui-avatars.com/api/?name=${initials}&background=4CAF50&color=fff&bold=true`;
+        }
+        
+        // Nom
+        name.textContent = currentUser.displayName || 'Joueur';
+        
+        // Points (mis à jour plus tard)
+        if (userStats && userStats.points) {
+            points.textContent = userStats.points + ' points';
+        }
+    }
+}
+
+// ==================== MODAL DE CONNEXION ====================
+
+// Fonctions pour gérer le modal
+function showLoginModal() {
+    // Crée le modal s'il n'existe pas
+    let modal = document.getElementById('login-modal');
+    
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'login-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        `;
+        
+        modal.innerHTML = `
+            <div style="background: white; padding: 40px; border-radius: 20px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <h1 style="color: #2c3e50; margin-bottom: 10px;">Traducteur Français-Pular</h1>
+                <p style="color: #666; margin-bottom: 30px; font-size: 16px;">
+                    Connectez-vous pour traduire les verbes et monter dans le classement
+                </p>
+                
+                <!-- Bouton Google -->
+                <button onclick="loginWithGoogle()" style="width: 100%; padding: 15px; background: white; color: #757575; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; margin-bottom: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: 500; transition: all 0.3s;">
+                    <img src="https://www.google.com/favicon.ico" alt="Google" style="width: 24px; height: 24px;">
+                    Continuer avec Google
+                </button>
+                
+                <div style="color: #888; font-size: 14px; line-height: 1.5; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <p>📚 <strong>10 000 verbes</strong> à traduire du français au pular</p>
+                    <p>🏆 <strong>Classement</strong> en temps réel avec d'autres participants</p>
+                    <p>🎯 <strong>Système de validation</strong> collaborative</p>
+                </div>
+                
+                <p style="font-size: 12px; color: #999; margin-top: 25px;">
+                    Seule votre adresse email sera utilisée pour sauvegarder votre progression
+                </p>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Style pour le bouton Google au survol
+        const style = document.createElement('style');
+        style.textContent = `
+            button:hover {
+                background: #f8f9fa !important;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.1) !important;
+                transform: translateY(-2px) !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Afficher le modal
+    modal.style.display = 'flex';
+    
+    // Cacher le contenu principal
+    const container = document.querySelector('.container');
+    if (container) {
+        container.style.display = 'none';
+    }
+}
+
+function hideLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Afficher le contenu principal
+    const container = document.querySelector('.container');
+    if (container) {
+        container.style.display = 'block';
+    }
+}
+
+// ==================== MODAL DE CHOIX DE PSEUDO ====================
+
+function showPseudoModal() {
+    if (!currentUser) return;
+    
+    const modal = document.createElement('div');
+    modal.id = 'pseudo-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        z-index: 10000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 40px; border-radius: 15px; width: 90%; max-width: 400px; text-align: center;">
+            <h2 style="color: #2c3e50; margin-bottom: 20px;">Choisissez votre pseudo</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Comment souhaitez-vous apparaître dans le classement ?
+            </p>
+            
+            <div style="text-align: left; margin-bottom: 25px; background: #f8f9fa; padding: 20px; border-radius: 10px;">
+                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                    <img src="${currentUser.photoURL || 'https://www.google.com/favicon.ico'}" 
+                         alt="Photo" 
+                         style="width: 50px; height: 50px; border-radius: 50%; margin-right: 15px;">
+                    <div>
+                        <div style="font-weight: bold;">${currentUser.displayName || 'Utilisateur Google'}</div>
+                        <div style="font-size: 14px; color: #666;">${currentUser.email || ''}</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #333;">
+                        Pseudo pour le jeu :
+                    </label>
+                    <input type="text" 
+                           id="pseudo-input" 
+                           value="${currentUser.displayName || ''}"
+                           maxlength="20"
+                           style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; outline: none;">
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Maximum 20 caractères. Ce pseudo sera visible par tous.
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="savePseudo()" 
+                        style="flex: 1; padding: 15px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;">
+                    ✅ Valider
+                </button>
+                <button onclick="useDefaultName()" 
+                        style="flex: 1; padding: 15px; background: #f0f0f0; color: #666; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    Par défaut
+                </button>
+            </div>
+            
+            <p style="font-size: 12px; color: #888; margin-top: 15px;">
+                Vous pourrez modifier votre pseudo plus tard dans les paramètres.
+            </p>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Focus sur l'input
+    setTimeout(() => {
+        const pseudoInput = document.getElementById('pseudo-input');
+        if (pseudoInput) {
+            pseudoInput.focus();
+            pseudoInput.select();
+        }
+    }, 100);
+}
+
+// Sauvegarder le pseudo choisi
+async function savePseudo() {
+    const pseudoInput = document.getElementById('pseudo-input');
+    const pseudo = pseudoInput ? pseudoInput.value.trim() : '';
+    
+    if (!pseudo) {
+        alert('Veuillez entrer un pseudo');
+        return;
+    }
+    
+    if (pseudo.length > 20) {
+        alert('Le pseudo ne doit pas dépasser 20 caractères');
+        return;
+    }
+    
+    // Sauvegarder dans Firebase
+    await updateUserPseudo(pseudo);
+    
+    // Fermer le modal
+    const modal = document.getElementById('pseudo-modal');
+    if (modal) modal.remove();
+    
+    // Continuer avec l'application
+    continueAfterPseudo();
+}
+
+// Utiliser le nom par défaut (nom Google)
+async function useDefaultName() {
+    const defaultName = currentUser.displayName || 'Joueur';
+    await updateUserPseudo(defaultName);
+    
+    const modal = document.getElementById('pseudo-modal');
+    if (modal) modal.remove();
+    
+    continueAfterPseudo();
+}
+
+// Mettre à jour le pseudo dans Firebase
+async function updateUserPseudo(pseudo) {
+    try {
+        const userRef = database.ref('utilisateurs/' + currentUser.uid);
+        
+        // Mettre à jour le pseudo
+        await userRef.update({
+            nom: pseudo,
+            pseudo_personnalise: true,
+            date_dernier_changement_pseudo: new Date().toISOString()
+        });
+        
+        // Mettre à jour localement
+        if (userStats) {
+            userStats.nom = pseudo;
+            userStats.pseudo_personnalise = true;
+        }
+        
+        console.log('📝 Pseudo mis à jour:', pseudo);
+        
+        // Mettre à jour l'affichage
+        updateUserProfileDisplay();
+        
+    } catch (error) {
+        console.error('❌ Erreur mise à jour pseudo:', error);
+    }
+}
+
+// Continuer après avoir choisi un pseudo
+function continueAfterPseudo() {
+    // Initialiser l'application
+    initEventListeners();
+    startRealtimeUpdates();
+    loadNextVerbe();
+    
+    // Mettre à jour l'affichage
+    updateUserProfileDisplay();
+    updateUserStatsDisplay();
+}
+
+// ==================== GESTION DU PROFIL UTILISATEUR ====================
+
+async function loadOrCreateUserProfile() {
+    if (!currentUser || !currentUser.uid) {
+        console.error('❌ Pas d\'utilisateur connecté');
+        return;
+    }
+    
+    const userRef = database.ref('utilisateurs/' + currentUser.uid);
+    
+    userRef.on('value', async (snapshot) => {
+        if (snapshot.exists()) {
+            // ✅ Profil existant
+            userStats = snapshot.val();
+            console.log("📊 Profil chargé:", userStats.nom);
+            
+            // Vérifier si c'est le premier login ou si le pseudo n'est pas personnalisé
+            const isFirstLogin = !userStats.date_derniere_connexion;
+            const hasCustomPseudo = userStats.pseudo_personnalise === true;
+            
+            if (isFirstLogin || !hasCustomPseudo) {
+                // Montrer le modal pour choisir un pseudo
+                showPseudoModal();
+            } else {
+                // Pseudo déjà choisi, continuer normalement
+                continueAfterPseudo();
+            }
+            
+            // Mettre à jour les infos Google
+            userRef.update({
+                email: currentUser.email || userStats.email,
+                photoURL: currentUser.photoURL || userStats.photoURL,
+                date_derniere_connexion: new Date().toISOString()
+            });
+            
+        } else {
+            // 🆕 Nouveau profil
+            const userData = {
+                nom: currentUser.displayName || 'Joueur', // Temporaire
+                email: currentUser.email || null,
+                photoURL: currentUser.photoURL || null,
+                date_inscription: new Date().toISOString(),
+                date_derniere_connexion: new Date().toISOString(),
+                provider: 'google',
+                pseudo_personnalise: false, // Pas encore personnalisé
+                verbes_traduits: 0,
+                verbes_valides: 0,
+                score_fiabilite: 1.0,
+                streak: 0,
+                points: 0,
+                historique: {},
+                playlist_actuelle: null,
+                verbes_passes: []
+            };
+            
+            await userRef.set(userData);
+            userStats = userData;
+            console.log("👤 Nouveau profil créé");
+            
+            // Montrer le modal pour choisir un pseudo (nouvel utilisateur)
+            showPseudoModal();
+        }
+    });
+}
+
+// Mettre à jour l'affichage du profil (pour les points)
+function updateUserProfileDisplay() {
+    const pointsElement = document.getElementById('user-points');
+    if (pointsElement && userStats) {
+        pointsElement.textContent = (userStats.points || 0) + ' points';
+    }
+}
+
+// ==================== VÉRIFICATION DE LA BASE DE DONNÉES ====================
 
 async function checkDatabaseAndInitialize() {
     console.log("🔍 Vérification de la base de données...");
@@ -136,12 +648,6 @@ async function checkDatabaseAndInitialize() {
         
         console.log("✅ Base de données OK");
         
-        // Initialiser l'app
-        await loadOrCreateUserProfile();
-        initEventListeners();
-        startRealtimeUpdates();
-        await loadNextVerbe();
-        
     } catch (error) {
         console.error("❌ Erreur vérification base:", error);
         showInitializationPanel();
@@ -149,22 +655,36 @@ async function checkDatabaseAndInitialize() {
 }
 
 function showInitializationPanel() {
-    document.getElementById('init-panel').style.display = 'block';
-    document.getElementById('verbe-francais').textContent = "Initialisation requise";
-    document.getElementById('stats-container').innerHTML = `
-        <div class="stat-card" style="grid-column: 1 / -1;">
-            <div class="stat-value">⚠️</div>
-            <div class="stat-label">Base vide</div>
-        </div>
-    `;
+    const initPanel = document.getElementById('init-panel');
+    if (initPanel) {
+        initPanel.style.display = 'block';
+    }
+    
+    const verbeFrancais = document.getElementById('verbe-francais');
+    if (verbeFrancais) {
+        verbeFrancais.textContent = "Initialisation requise";
+    }
+    
+    const statsContainer = document.getElementById('stats-container');
+    if (statsContainer) {
+        statsContainer.innerHTML = `
+            <div class="stat-card" style="grid-column: 1 / -1;">
+                <div class="stat-value">⚠️</div>
+                <div class="stat-label">Base vide</div>
+            </div>
+        `;
+    }
 }
 
-// ==================== INITIALISATION BASE ====================
+// ==================== INITIALISATION DE LA BASE ====================
+
 async function initializeDatabase() {
     console.log("🚀 Initialisation de la base...");
     
     const button = document.querySelector('#init-panel button');
     const panel = document.getElementById('init-panel');
+    
+    if (!button) return;
     
     button.disabled = true;
     button.textContent = "Initialisation en cours...";
@@ -1091,7 +1611,9 @@ async function initializeDatabase() {
         console.log(`✅ ${verbes.length} verbes initialisés`);
         
         button.textContent = "✅ Initialisée ! Redémarrage...";
-        panel.innerHTML = '<p style="color: green;">✅ Base initialisée ! L\'application va redémarrer...</p>';
+        if (panel) {
+            panel.innerHTML = '<p style="color: green;">✅ Base initialisée ! L\'application va redémarrer...</p>';
+        }
         
         // Redémarrer après 2 secondes
         setTimeout(() => {
@@ -1100,49 +1622,23 @@ async function initializeDatabase() {
         
     } catch (error) {
         console.error("❌ Erreur d'initialisation:", error);
-        button.textContent = "❌ Erreur, réessayez";
-        button.disabled = false;
-        panel.innerHTML += `<p style="color: red;">Erreur: ${error.message}</p>`;
+        if (button) {
+            button.textContent = "❌ Erreur, réessayez";
+            button.disabled = false;
+        }
+        if (panel) {
+            panel.innerHTML += `<p style="color: red;">Erreur: ${error.message}</p>`;
+        }
     }
 }
 
-// ==================== GESTION UTILISATEUR ====================
-async function loadOrCreateUserProfile() {
-    const userRef = database.ref('utilisateurs/' + currentUser.uid);
-    
-    // Écouter les changements de stats en temps réel
-    userRef.on('value', (snapshot) => {
-        if (snapshot.exists()) {
-            userStats = snapshot.val();
-            console.log("📊 Stats utilisateur chargées:", userStats.nom);
-            updateUserStatsDisplay();
-        } else {
-            // Nouvel utilisateur
-            const initialStats = {
-                nom: `Joueur_${Math.floor(Math.random() * 10000)}`,
-                verbes_traduits: 0,
-                verbes_valides: 0,
-                score_fiabilite: 1.0,
-                streak: 0,
-                points: 0,
-                historique: {},
-                playlist_actuelle: null,
-                verbes_passes: []
-            };
-            
-            userRef.set(initialStats);
-            userStats = initialStats;
-            console.log("👤 Nouvel utilisateur créé:", initialStats.nom);
-        }
-    });
-}
+// ==================== GESTION DES VERBES ====================
 
-// ==================== GESTION VERBES ====================
 async function loadNextVerbe() {
     console.log("🔍 Recherche d'un nouveau verbe...");
     
     // Si pas de playlist ou playlist vide
-    if (!userStats.playlist_actuelle || currentPlaylist.length === 0) {
+    if (!userStats || !userStats.playlist_actuelle || currentPlaylist.length === 0) {
         console.log("📝 Pas de playlist, on en crée une...");
         await assignNewPlaylist();
     }
@@ -1160,7 +1656,11 @@ async function loadNextVerbe() {
             if (verbe && !alreadyDone) {
                 currentVerbe = { id: verbeId, ...verbe };
                 console.log("🎯 Verbe trouvé:", currentVerbe.fr);
-                document.getElementById('verbe-francais').textContent = currentVerbe.fr;
+                
+                const verbeElement = document.getElementById('verbe-francais');
+                if (verbeElement) {
+                    verbeElement.textContent = currentVerbe.fr;
+                }
                 
                 // Mettre à jour la progression
                 updatePlaylistProgress();
@@ -1257,29 +1757,40 @@ async function generateDynamicPlaylist() {
     }
 }
 
-// ==================== ÉVÉNEMENTS ====================
+// ==================== GESTION DES ÉVÉNEMENTS ====================
+
 function initEventListeners() {
     console.log("🎮 Initialisation des événements...");
     
     // Validation
-    document.getElementById('btn-valider').addEventListener('click', validateTranslation);
+    const validerBtn = document.getElementById('btn-valider');
+    if (validerBtn) {
+        validerBtn.addEventListener('click', validateTranslation);
+    }
     
     // Saisie au clavier
-    document.getElementById('traduction-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            validateTranslation();
-        }
-    });
+    const input = document.getElementById('traduction-input');
+    if (input) {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                validateTranslation();
+            }
+        });
+    }
     
     // Bouton passer
     passerBtn = document.getElementById('btn-passer');
-    
-    passerBtn.addEventListener('mousedown', startPressTimer);
-    passerBtn.addEventListener('touchstart', startPressTimer);
-    
-    passerBtn.addEventListener('mouseup', clearPressTimer);
-    passerBtn.addEventListener('touchend', clearPressTimer);
-    passerBtn.addEventListener('mouseleave', clearPressTimer);
+    if (passerBtn) {
+        passerBtn.addEventListener('mousedown', startPressTimer);
+        passerBtn.addEventListener('touchstart', startPressTimer);
+        
+        passerBtn.addEventListener('mouseup', clearPressTimer);
+        passerBtn.addEventListener('touchend', clearPressTimer);
+        passerBtn.addEventListener('mouseleave', clearPressTimer);
+        
+        // Éviter le menu contextuel sur mobile
+        passerBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
     
     // Tabs classement
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1294,14 +1805,19 @@ function initEventListeners() {
     console.log("✅ Événements initialisés");
 }
 
-// ==================== GESTION TRADUCTION ====================
+// ==================== GESTION DES TRADUCTIONS ====================
+
 function startPressTimer(e) {
     isLongPress = false;
-    passerBtn.classList.remove('long-press');
+    if (passerBtn) {
+        passerBtn.classList.remove('long-press');
+    }
     
     pressTimer = setTimeout(() => {
         isLongPress = true;
-        passerBtn.classList.add('long-press');
+        if (passerBtn) {
+            passerBtn.classList.add('long-press');
+        }
     }, 1000);
 }
 
@@ -1316,20 +1832,22 @@ function clearPressTimer() {
         }
         
         isLongPress = false;
-        passerBtn.classList.remove('long-press');
+        if (passerBtn) {
+            passerBtn.classList.remove('long-press');
+        }
     }
 }
 
 async function validateTranslation() {
     const input = document.getElementById('traduction-input');
-    let traduction = input.value.trim();
+    let traduction = input ? input.value.trim() : '';
     
     if (!traduction || !currentVerbe) {
         console.log("⚠️ Traduction vide ou pas de verbe");
         return;
     }
 
-      // CONVERSION FINALE AVANT SAUVEGARDE
+    // CONVERSION FINALE AVANT SAUVEGARDE
     traduction = convertirPular(traduction);
 
     console.log("💾 Sauvegarde traduction:", traduction);
@@ -1345,7 +1863,9 @@ async function validateTranslation() {
         await checkConsensus(currentVerbe.id);
         
         // Charger le prochain verbe
-        input.value = '';
+        if (input) {
+            input.value = '';
+        }
         await loadNextVerbe();
         
     } catch (error) {
@@ -1443,7 +1963,10 @@ async function skipVerbe() {
         }
         
         // Charger le prochain
-        document.getElementById('traduction-input').value = '';
+        const input = document.getElementById('traduction-input');
+        if (input) {
+            input.value = '';
+        }
         await loadNextVerbe();
         
     } catch (error) {
@@ -1481,10 +2004,11 @@ async function markAsUnknown() {
 }
 
 // ==================== AFFICHAGE ====================
+
 function updateUserStatsDisplay() {
     const container = document.getElementById('stats-container');
     
-    if (!container) return;
+    if (!container || !userStats) return;
     
     container.innerHTML = `
         <div class="stat-card">
@@ -1554,6 +2078,7 @@ async function updateUserStatsAfterTranslation() {
 }
 
 // ==================== CLASSEMENT ====================
+
 function startRealtimeUpdates() {
     console.log("🏆 Initialisation classement temps réel");
     
@@ -1636,6 +2161,7 @@ async function updateClassement(type) {
 }
 
 // ==================== UTILITAIRES ====================
+
 function getRandomElements(arr, n) {
     if (!arr || arr.length === 0) return [];
     
@@ -1643,13 +2169,236 @@ function getRandomElements(arr, n) {
     return shuffled.slice(0, Math.min(n, arr.length));
 }
 
+// ==================== PARAMÈTRES ====================
+
+function showSettings() {
+    const modal = document.createElement('div');
+    modal.id = 'settings-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        z-index: 10000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;">
+            <h2 style="color: #2c3e50; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                Paramètres
+                <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                        style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">
+                    ×
+                </button>
+            </h2>
+            
+            <div style="margin-bottom: 30px;">
+                <h3 style="color: #333; margin-bottom: 15px;">👤 Votre profil</h3>
+                
+                <div style="display: flex; align-items: center; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+                    <img src="${currentUser.photoURL || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(userStats?.nom || 'J') + '&background=667eea&color=fff'}" 
+                         alt="Photo" 
+                         style="width: 60px; height: 60px; border-radius: 50%; margin-right: 15px;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; font-size: 18px;">${userStats?.nom || 'Joueur'}</div>
+                        <div style="color: #666; font-size: 14px;">${currentUser.email || ''}</div>
+                        <div style="font-size: 12px; color: #888;">Connecté avec Google</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #333;">
+                        Modifier votre pseudo :
+                    </label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" 
+                               id="change-pseudo-input" 
+                               value="${userStats?.nom || ''}"
+                               maxlength="20"
+                               style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; outline: none;">
+                        <button onclick="changePseudo()" 
+                                style="padding: 12px 20px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                            Modifier
+                        </button>
+                    </div>
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        Votre pseudo sera visible par tous les joueurs.
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 30px;">
+                <h3 style="color: #333; margin-bottom: 15px;">📊 Vos statistiques</h3>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #1976d2;">${userStats?.verbes_traduits || 0}</div>
+                        <div style="font-size: 12px; color: #555;">Verbes traduits</div>
+                    </div>
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #388e3c;">${userStats?.points || 0}</div>
+                        <div style="font-size: 12px; color: #555;">Points</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 style="color: #333; margin-bottom: 15px;">⚙️ Options</h3>
+                <button onclick="exportMyData()" 
+                        style="width: 100%; padding: 15px; margin-bottom: 10px; background: #2196F3; color: white; border: none; border-radius: 8px; text-align: left; cursor: pointer;">
+                    📥 Exporter mes données
+                </button>
+                <button onclick="logout()" 
+                        style="width: 100%; padding: 15px; background: #f44336; color: white; border: none; border-radius: 8px; text-align: left; cursor: pointer;">
+                    🚪 Déconnexion
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+// Changer le pseudo depuis les paramètres
+async function changePseudo() {
+    const pseudoInput = document.getElementById('change-pseudo-input');
+    const nouveauPseudo = pseudoInput ? pseudoInput.value.trim() : '';
+    
+    if (!nouveauPseudo) {
+        alert('Veuillez entrer un pseudo');
+        return;
+    }
+    
+    if (nouveauPseudo.length > 20) {
+        alert('Le pseudo ne doit pas dépasser 20 caractères');
+        return;
+    }
+    
+    if (nouveauPseudo === userStats?.nom) {
+        alert('C\'est déjà votre pseudo actuel');
+        return;
+    }
+    
+    // Mettre à jour
+    await updateUserPseudo(nouveauPseudo);
+    
+    // Mettre à jour l'affichage
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal) {
+        settingsModal.remove();
+        setTimeout(() => showSettings(), 300); // Recharger les paramètres
+    }
+    
+    showMessage('Pseudo modifié avec succès !', 'success');
+}
+
+// Fonction pour exporter les données personnelles
+async function exportMyData() {
+    try {
+        const userRef = database.ref('utilisateurs/' + currentUser.uid);
+        const snapshot = await userRef.once('value');
+        const data = snapshot.val();
+        
+        // Formater pour l'export
+        const exportData = {
+            profil: {
+                nom: data.nom,
+                email: currentUser.email,
+                date_inscription: data.date_inscription,
+                points: data.points,
+                verbes_traduits: data.verbes_traduits,
+                verbes_valides: data.verbes_valides
+            },
+            historique: data.historique || {},
+            date_export: new Date().toISOString()
+        };
+        
+        // Créer et télécharger le fichier
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `traducteur-pular-${currentUser.uid}-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showMessage('Données exportées avec succès !', 'success');
+        
+    } catch (error) {
+        console.error('❌ Erreur export données:', error);
+        showMessage('Erreur lors de l\'export', 'error');
+    }
+}
+
+// ==================== STYLES ADDITIONNELS ====================
+
+// Ajoutez ce style dans index.html ou créez-le dynamiquement
+const authStyles = `
+    /* Animation pour le modal */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes fadeInDown {
+        from { opacity: 0; transform: translate(-50%, -20px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
+    }
+    
+    @keyframes fadeOutUp {
+        from { opacity: 1; transform: translate(-50%, 0); }
+        to { opacity: 0; transform: translate(-50%, -20px); }
+    }
+    
+    #login-modal > div {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Bouton Google amélioré */
+    button[onclick="loginWithGoogle()"]:hover {
+        background: #f8f9fa !important;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1) !important;
+        transform: translateY(-2px) !important;
+        transition: all 0.3s !important;
+    }
+    
+    /* Avatar utilisateur */
+    #user-avatar {
+        transition: transform 0.3s;
+    }
+    
+    #user-avatar:hover {
+        transform: scale(1.1);
+    }
+    
+    /* Bouton passer avec long press */
+    .long-press {
+        background-color: #ff9800 !important;
+        color: white !important;
+        box-shadow: 0 0 20px rgba(255, 152, 0, 0.5) !important;
+    }
+`;
+
+// Injecter les styles
+const styleSheet = document.createElement("style");
+styleSheet.textContent = authStyles;
+document.head.appendChild(styleSheet);
+
 // ==================== EXPORT FONCTIONS GLOBALES ====================
 window.initializeDatabase = initializeDatabase;
-window.initializeApp = async function() {
-    console.log("⚠️ Utilisez initializeDatabase() à la place");
-    return initializeDatabase();
-};
+window.loginWithGoogle = loginWithGoogle;
+window.logout = logout;
+window.savePseudo = savePseudo;
+window.useDefaultName = useDefaultName;
+window.showSettings = showSettings;
+window.changePseudo = changePseudo;
+window.exportMyData = exportMyData;
 
 // ==================== DÉMARRAGE AUTOMATIQUE ====================
-
 console.log("🚀 App.js chargé avec succès");
