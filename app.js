@@ -1322,7 +1322,7 @@ function clearPressTimer() {
 
 async function validateTranslation() {
     const input = document.getElementById('traduction-input');
-    const traduction = input.value.trim();
+    let traduction = input.value.trim();
     
     if (!traduction || !currentVerbe) {
         console.log("⚠️ Traduction vide ou pas de verbe");
@@ -1651,4 +1651,5 @@ window.initializeApp = async function() {
 };
 
 // ==================== DÉMARRAGE AUTOMATIQUE ====================
+
 console.log("🚀 App.js chargé avec succès");
