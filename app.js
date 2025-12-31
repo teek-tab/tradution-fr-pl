@@ -27,6 +27,8 @@ let userStats = null;
 let pressTimer;
 let isLongPress = false;
 let passerBtn = null;
+let isLoadingVerbe = false;  // Pour éviter les boucles
+
 
 // Gestion des erreurs globales
 window.addEventListener('error', function(e) {
@@ -182,9 +184,10 @@ async function initAuth() {
                 
                 // Charger les données
                 await loadOrCreateUserProfile();
-                initEventListeners();
-                startRealtimeUpdates();
-                await loadNextVerbe();
+
+                //initEventListeners();
+                //startRealtimeUpdates();
+                //await loadNextVerbe();
                 
                 // Cacher le modal de connexion
                 hideLoginModal();
@@ -560,59 +563,60 @@ async function loadOrCreateUserProfile() {
     
     const userRef = database.ref('utilisateurs/' + currentUser.uid);
     
-    userRef.on('value', async (snapshot) => {
-        if (snapshot.exists()) {
-            // ✅ Profil existant
-            userStats = snapshot.val();
-            console.log("📊 Profil chargé:", userStats.nom);
-            
-            // Vérifier si c'est le premier login ou si le pseudo n'est pas personnalisé
-            const isFirstLogin = !userStats.date_derniere_connexion;
-            const hasCustomPseudo = userStats.pseudo_personnalise === true;
-            
-            if (isFirstLogin || !hasCustomPseudo) {
-                // Montrer le modal pour choisir un pseudo
-                showPseudoModal();
-            } else {
-                // Pseudo déjà choisi, continuer normalement
-                continueAfterPseudo();
-            }
-            
-            // Mettre à jour les infos Google
-            userRef.update({
-                email: currentUser.email || userStats.email,
-                photoURL: currentUser.photoURL || userStats.photoURL,
-                date_derniere_connexion: new Date().toISOString()
-            });
-            
-        } else {
-            // 🆕 Nouveau profil
-            const userData = {
-                nom: currentUser.displayName || 'Joueur', // Temporaire
-                email: currentUser.email || null,
-                photoURL: currentUser.photoURL || null,
-                date_inscription: new Date().toISOString(),
-                date_derniere_connexion: new Date().toISOString(),
-                provider: 'google',
-                pseudo_personnalise: false, // Pas encore personnalisé
-                verbes_traduits: 0,
-                verbes_valides: 0,
-                score_fiabilite: 1.0,
-                streak: 0,
-                points: 0,
-                historique: {},
-                playlist_actuelle: null,
-                verbes_passes: []
-            };
-            
-            await userRef.set(userData);
-            userStats = userData;
-            console.log("👤 Nouveau profil créé");
-            
-            // Montrer le modal pour choisir un pseudo (nouvel utilisateur)
+    // CHANGEMENT PRINCIPAL : .once() au lieu de .on()
+    const snapshot = await userRef.once('value');
+    
+    if (snapshot.exists()) {
+        // ✅ Profil existant
+        userStats = snapshot.val();
+        console.log("📊 Profil chargé:", userStats.nom);
+        
+        // Vérifier si c'est le premier login ou si le pseudo n'est pas personnalisé
+        const isFirstLogin = !userStats.date_derniere_connexion;
+        const hasCustomPseudo = userStats.pseudo_personnalise === true;
+        
+        if (isFirstLogin || !hasCustomPseudo) {
+            // Montrer le modal pour choisir un pseudo
             showPseudoModal();
+        } else {
+            // Pseudo déjà choisi, continuer normalement
+            continueAfterPseudo();
         }
-    });
+        
+        // Mettre à jour les infos Google
+        userRef.update({
+            email: currentUser.email || userStats.email,
+            photoURL: currentUser.photoURL || userStats.photoURL,
+            date_derniere_connexion: new Date().toISOString()
+        });
+        
+    } else {
+        // 🆕 Nouveau profil
+        const userData = {
+            nom: currentUser.displayName || 'Joueur', // Temporaire
+            email: currentUser.email || null,
+            photoURL: currentUser.photoURL || null,
+            date_inscription: new Date().toISOString(),
+            date_derniere_connexion: new Date().toISOString(),
+            provider: 'google',
+            pseudo_personnalise: false, // Pas encore personnalisé
+            verbes_traduits: 0,
+            verbes_valides: 0,
+            score_fiabilite: 1.0,
+            streak: 0,
+            points: 0,
+            historique: {},
+            playlist_actuelle: null,
+            verbes_passes: []
+        };
+        
+        await userRef.set(userData);
+        userStats = userData;
+        console.log("👤 Nouveau profil créé");
+        
+        // Montrer le modal pour choisir un pseudo (nouvel utilisateur)
+        showPseudoModal();
+    }
 }
 
 // Mettre à jour l'affichage du profil (pour les points)
@@ -1635,46 +1639,60 @@ async function initializeDatabase() {
 // ==================== GESTION DES VERBES ====================
 
 async function loadNextVerbe() {
+    // Éviter les appels simultanés
+    if (isLoadingVerbe) {
+        console.log("⏳ Déjà en train de charger un verbe...");
+        return;
+    }
+    
+    isLoadingVerbe = true;
     console.log("🔍 Recherche d'un nouveau verbe...");
     
-    // Si pas de playlist ou playlist vide
-    if (!userStats || !userStats.playlist_actuelle || currentPlaylist.length === 0) {
-        console.log("📝 Pas de playlist, on en crée une...");
-        await assignNewPlaylist();
-    }
-    
-    // Trouver un verbe non traduit dans la playlist
-    for (const verbeId of currentPlaylist) {
-        try {
-            const verbeRef = database.ref('verbes/' + verbeId);
-            const snapshot = await verbeRef.once('value');
-            const verbe = snapshot.val();
-            
-            // Vérifier si l'utilisateur a déjà traduit ce verbe
-            const alreadyDone = userStats.historique && userStats.historique[verbeId];
-            
-            if (verbe && !alreadyDone) {
-                currentVerbe = { id: verbeId, ...verbe };
-                console.log("🎯 Verbe trouvé:", currentVerbe.fr);
-                
-                const verbeElement = document.getElementById('verbe-francais');
-                if (verbeElement) {
-                    verbeElement.textContent = currentVerbe.fr;
-                }
-                
-                // Mettre à jour la progression
-                updatePlaylistProgress();
-                return;
-            }
-        } catch (error) {
-            console.error("Erreur chargement verbe", verbeId, error);
+    try {
+        // Si pas de playlist ou playlist vide
+        if (!userStats || !userStats.playlist_actuelle || currentPlaylist.length === 0) {
+            console.log("📝 Pas de playlist, on en crée une...");
+            await assignNewPlaylist();
         }
+        
+        // Trouver un verbe non traduit dans la playlist
+        for (const verbeId of currentPlaylist) {
+            try {
+                const verbeRef = database.ref('verbes/' + verbeId);
+                const snapshot = await verbeRef.once('value');
+                const verbe = snapshot.val();
+                
+                // Vérifier si l'utilisateur a déjà traduit ce verbe
+                const alreadyDone = userStats.historique && userStats.historique[verbeId];
+                
+                if (verbe && !alreadyDone) {
+                    currentVerbe = { id: verbeId, ...verbe };
+                    console.log("🎯 Verbe trouvé:", currentVerbe.fr);
+                    
+                    const verbeElement = document.getElementById('verbe-francais');
+                    if (verbeElement) {
+                        verbeElement.textContent = currentVerbe.fr;
+                    }
+                    
+                    // Mettre à jour la progression
+                    updatePlaylistProgress();
+                    isLoadingVerbe = false;
+                    return;
+                }
+            } catch (error) {
+                console.error("Erreur chargement verbe", verbeId, error);
+            }
+        }
+        
+        // Tous les verbes de la playlist sont faits
+        console.log("🔄 Tous les verbes faits, nouvelle playlist...");
+        await assignNewPlaylist();
+        await loadNextVerbe();
+        
+    } catch (error) {
+        console.error("❌ Erreur loadNextVerbe:", error);
+        isLoadingVerbe = false;
     }
-    
-    // Tous les verbes de la playlist sont faits
-    console.log("🔄 Tous les verbes faits, nouvelle playlist...");
-    await assignNewPlaylist();
-    await loadNextVerbe();
 }
 
 async function assignNewPlaylist() {
