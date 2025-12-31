@@ -1651,32 +1651,53 @@ async function loadNextVerbe() {
     
     try {
         // Si pas de playlist ou playlist vide
-        if (!userStats || !userStats.playlist_actuelle || currentPlaylist.length === 0) {
+        if (!userStats || !currentPlaylist || currentPlaylist.length === 0) {
             console.log("📝 Pas de playlist, on en crée une...");
             await assignNewPlaylist();
+            if (!currentPlaylist || currentPlaylist.length === 0) {
+                console.error("❌ Impossible de créer une playlist");
+                isLoadingVerbe = false;
+                return;
+            }
         }
+        
+        console.log("📋 Playlist actuelle:", currentPlaylist.length, "verbes");
+        console.log("📊 Historique:", userStats.historique ? Object.keys(userStats.historique).length : 0, "verbes faits");
         
         // Trouver un verbe non traduit dans la playlist
         for (const verbeId of currentPlaylist) {
+            // Vérifier si l'utilisateur a déjà traduit ce verbe
+            const alreadyDone = userStats.historique && userStats.historique[verbeId];
+            
+            if (alreadyDone) {
+                console.log("↩️ Verbe déjà fait:", verbeId);
+                continue; // Passer au suivant
+            }
+            
             try {
                 const verbeRef = database.ref('verbes/' + verbeId);
                 const snapshot = await verbeRef.once('value');
                 const verbe = snapshot.val();
                 
-                // Vérifier si l'utilisateur a déjà traduit ce verbe
-                const alreadyDone = userStats.historique && userStats.historique[verbeId];
-                
-                if (verbe && !alreadyDone) {
+                if (verbe) {
                     currentVerbe = { id: verbeId, ...verbe };
-                    console.log("🎯 Verbe trouvé:", currentVerbe.fr);
+                    console.log("🎯 NOUVEAU VERBE TROUVÉ:", currentVerbe.fr);
                     
                     const verbeElement = document.getElementById('verbe-francais');
                     if (verbeElement) {
                         verbeElement.textContent = currentVerbe.fr;
                     }
                     
+                    // Réinitialiser l'input
+                    const input = document.getElementById('traduction-input');
+                    if (input) {
+                        input.value = '';
+                        input.focus();
+                    }
+                    
                     // Mettre à jour la progression
                     updatePlaylistProgress();
+                    
                     isLoadingVerbe = false;
                     return;
                 }
@@ -1685,9 +1706,23 @@ async function loadNextVerbe() {
             }
         }
         
-        // Tous les verbes de la playlist sont faits
-        console.log("🔄 Tous les verbes faits, nouvelle playlist...");
+        // Si on arrive ici, tous les verbes sont faits
+        console.log("✅ TOUS LES VERBES DE LA PLAYLIST SONT FAITS !");
+        console.log("🔄 Création nouvelle playlist...");
+        
+        // Marquer les anciens verbes comme faits
+        if (userStats.historique) {
+            for (const verbeId of currentPlaylist) {
+                if (!userStats.historique[verbeId]) {
+                    userStats.historique[verbeId] = 'completé';
+                }
+            }
+        }
+        
+        // Créer nouvelle playlist
         await assignNewPlaylist();
+        
+        // Réessayer avec nouvelle playlist
         await loadNextVerbe();
         
     } catch (error) {
@@ -1900,8 +1935,14 @@ async function saveTranslation(traduction) {
     // Dans les verbes
     updates[`verbes/${verbeId}/traductions/${userId}`] = traduction;
     
-    // Dans l'historique utilisateur
+    // Dans l'historique utilisateur - IMPORTANT : Mettre à jour LOCALEMENT aussi
     updates[`utilisateurs/${userId}/historique/${verbeId}`] = traduction;
+    
+    // Mettre à jour userStats LOCALEMENT immédiatement
+    if (!userStats.historique) {
+        userStats.historique = {};
+    }
+    userStats.historique[verbeId] = traduction;
     
     // Incrémenter le compteur
     const verbeRef = database.ref('verbes/' + verbeId);
@@ -1916,8 +1957,13 @@ async function saveTranslation(traduction) {
     repartition[traduction] = (repartition[traduction] || 0) + 1;
     updates[`verbes/${verbeId}/stats/repartition`] = repartition;
     
+    // Exécuter toutes les mises à jour
     await database.ref().update(updates);
-    console.log("✅ Traduction sauvegardée");
+    
+    // Mettre à jour les stats locales aussi
+    userStats.verbes_traduits = (userStats.verbes_traduits || 0) + 1;
+    
+    console.log("✅ Traduction sauvegardée et stats locales mises à jour");
 }
 
 async function checkConsensus(verbeId) {
