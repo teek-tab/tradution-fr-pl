@@ -564,60 +564,60 @@ async function loadOrCreateUserProfile() {
     
     const userRef = database.ref('utilisateurs/' + currentUser.uid);
     
-    // CHANGEMENT PRINCIPAL : .once() au lieu de .on()
-    const snapshot = await userRef.once('value');
-    
-    if (snapshot.exists()) {
-        // ✅ Profil existant
-        userStats = snapshot.val();
-        console.log("📊 Profil chargé:", userStats.nom);
-        
-        // Vérifier si c'est le premier login ou si le pseudo n'est pas personnalisé
-        const isFirstLogin = !userStats.date_derniere_connexion;
-        const hasCustomPseudo = userStats.pseudo_personnalise === true;
-        
-        if (isFirstLogin || !hasCustomPseudo) {
+    // RETOUR À .on('value') MAIS avec contrôle
+    userRef.on('value', async (snapshot) => {
+        if (snapshot.exists()) {
+            // ✅ Profil existant
+            userStats = snapshot.val();
+            console.log("📊 Stats utilisateur mises à jour");
+            
+            // Vérifier si c'est le premier login ou si le pseudo n'est pas personnalisé
+            const isFirstLogin = !userStats.date_derniere_connexion;
+            const hasCustomPseudo = userStats.pseudo_personnalise === true;
+            
+            if (isFirstLogin || !hasCustomPseudo) {
+                // Montrer le modal pour choisir un pseudo (une seule fois)
+                if (!window.pseudoModalShown) {
+                    showPseudoModal();
+                    window.pseudoModalShown = true;
+                }
+            } else {
+                // Pseudo déjà choisi, initialiser l'app (une seule fois)
+                if (!window.appInitialized) {
+                    continueAfterPseudo();
+                    window.appInitialized = true;
+                }
+            }
+            
+        } else {
+            // 🆕 Nouveau profil
+            const userData = {
+                nom: currentUser.displayName || 'Joueur',
+                email: currentUser.email || null,
+                photoURL: currentUser.photoURL || null,
+                date_inscription: new Date().toISOString(),
+                date_derniere_connexion: new Date().toISOString(),
+                provider: 'google',
+                pseudo_personnalise: false,
+                verbes_traduits: 0,
+                verbes_valides: 0,
+                score_fiabilite: 1.0,
+                streak: 0,
+                points: 0,
+                historique: {},
+                playlist_actuelle: null,
+                verbes_passes: []
+            };
+            
+            await userRef.set(userData);
+            userStats = userData;
+            console.log("👤 Nouveau profil créé");
+            
             // Montrer le modal pour choisir un pseudo
             showPseudoModal();
-        } else {
-            // Pseudo déjà choisi, continuer normalement
-            continueAfterPseudo();
+            window.pseudoModalShown = true;
         }
-        
-        // Mettre à jour les infos Google
-        userRef.update({
-            email: currentUser.email || userStats.email,
-            photoURL: currentUser.photoURL || userStats.photoURL,
-            date_derniere_connexion: new Date().toISOString()
-        });
-        
-    } else {
-        // 🆕 Nouveau profil
-        const userData = {
-            nom: currentUser.displayName || 'Joueur', // Temporaire
-            email: currentUser.email || null,
-            photoURL: currentUser.photoURL || null,
-            date_inscription: new Date().toISOString(),
-            date_derniere_connexion: new Date().toISOString(),
-            provider: 'google',
-            pseudo_personnalise: false, // Pas encore personnalisé
-            verbes_traduits: 0,
-            verbes_valides: 0,
-            score_fiabilite: 1.0,
-            streak: 0,
-            points: 0,
-            historique: {},
-            playlist_actuelle: null,
-            verbes_passes: []
-        };
-        
-        await userRef.set(userData);
-        userStats = userData;
-        console.log("👤 Nouveau profil créé");
-        
-        // Montrer le modal pour choisir un pseudo (nouvel utilisateur)
-        showPseudoModal();
-    }
+    });
 }
 
 // Mettre à jour l'affichage du profil (pour les points)
@@ -2490,3 +2490,4 @@ window.exportMyData = exportMyData;
 
 // ==================== DÉMARRAGE AUTOMATIQUE ====================
 console.log("🚀 App.js chargé avec succès");
+
